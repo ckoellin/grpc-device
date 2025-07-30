@@ -1,4 +1,4 @@
-#include <grpcpp/test/server_context_test_spouse.h>
+#include "server_context_test_spouse.h"
 #include <gtest/gtest.h>
 #include <server/debug_session_properties_restricted_service.h>
 #include <server/syscfg_library.h>

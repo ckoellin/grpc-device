@@ -25,8 +25,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Enforce consistent runtime library settings in case of MSVC
-if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+# Enforce consistent runtime library flags for MSVC.
+# The way the flags are set in cmake vary depending on if the CMP0091 policy is enabled or not.
+# In either case we will link against the static runtime.
+if(MSVC)
   if (POLICY CMP0091)
     cmake_policy(SET CMP0091 NEW)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "Use static runtime" FORCE)
@@ -34,11 +36,9 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     set(libprotoc_MSVC_STATIC_RUNTIME ON CACHE BOOL "Use static runtime for libprotoc" FORCE)
     set(protobuf_MSVC_STATIC_RUNTIME ON CACHE BOOL "Use static runtime for protobuf" FORCE)
     set(ABSL_MSVC_STATIC_RUNTIME ON CACHE BOOL "Use static runtime for Abseil" FORCE)
-    message("Setting policy CMP0091 and runtime library")
   else()
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MD")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MDd")
-    message("Using dynamic runtime library")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
   endif()
 endif()
 
@@ -47,42 +47,47 @@ endif()
 #---
 option(USE_NILRT_LEGACY_TOOLCHAIN "Enable to use tools and libraries from a NILRT compile toolchain." OFF)
 option(USE_PYTHON_VIRTUALENV "Enable to use the automatically-generated python venv, local to this project source." ON)
-option(USE_SUBMODULE_LIBS "Enable to link against the submodule libraries, rather than their native-OS equivalents." ON)
+option(USE_CONAN "Enable to link against conan packages, rather than their native-OS equivalents." ON)
 option(INCLUDE_SIDEBAND_RDMA "Include support for RDMA sideband transfers." OFF)
 option(SIDEBAND_STATIC "Link grpc-sideband statically to current application." ON)
 
 #----------------------------------------------------------------------
 # Setup build dependencies, according to the toolchain options.
 #----------------------------------------------------------------------
-if(USE_SUBMODULE_LIBS)
-  # The archetypical WIN32 build case
-  # protobuf_INSTALL must be turned OFF whenever building it as a cmake subdir.
-  set(protobuf_INSTALL OFF)
-
-  add_subdirectory(third_party/grpc ${CMAKE_CURRENT_BINARY_DIR}/grpc)
-  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-  add_subdirectory(third_party/gtest ${CMAKE_CURRENT_BINARY_DIR}/gtest EXCLUDE_FROM_ALL)
-  add_subdirectory(third_party/json ${CMAKE_CURRENT_BINARY_DIR}/json)
-  add_subdirectory(third_party/utfcpp ${CMAKE_CURRENT_BINARY_DIR}/utfcpp)
+if(USE_CONAN)
+  # grpc-sideband does not have a conan package, so use it as a git submodule instead.
   add_subdirectory(third_party/grpc-sideband ${CMAKE_CURRENT_BINARY_DIR}/grpc-sideband)
 
-  set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
-  set(_REFLECTION grpc++_reflection)
-  set(_GRPC grpc)
-  set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
-  set(_GRPC_GRPCPP grpc++)
-  set(_PROTOBUF_LIBPROTOBUF libprotobuf)
+  find_package(gRPC REQUIRED)
+  find_package(Protobuf REQUIRED)
+  find_package(absl REQUIRED)
+  find_package(GTest REQUIRED)
+  find_package(nlohmann_json REQUIRED)
+  find_package(utf8cpp REQUIRED)
+
+  set(_GRPC gRPC::grpc)
+  set(_GRPC_GRPCPP gRPC::grpc++)
+  set(_GRPC_GPR gRPC::gpr)
+  set(_REFLECTION gRPC::grpc++_reflection)
+  set(_PROTOBUF_LIBPROTOBUF protobuf::libprotobuf)
   set(_UTF8CPP utf8cpp)
   set(_GRPC_SIDEBAND ni_grpc_sideband)
+  set(_GTEST GTest::gtest)
+  set(_GMOCK GTest::gmock)
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
+  get_target_property(_PROTOBUF_PROTOC protobuf::protoc IMPORTED_LOCATION)
+  get_target_property(_GRPC_CPP_PLUGIN_EXECUTABLE gRPC::grpc_cpp_plugin IMPORTED_LOCATION)
 else()
   find_program(_PROTOBUF_PROTOC protoc)
   find_program(_GRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin)
   find_library(_GRPC_GPR gpr)
   find_library(_ABSEIL_SYNC absl_synchronization REQUIRED)
 
+  set(_GTEST gtest)
+  set(_GMOCK gmock)
   if(USE_NILRT_LEGACY_TOOLCHAIN)
     # The archetypical NILRT SDK toolchain build case
-    add_subdirectory(third_party/grpc ${CMAKE_CURRENT_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
     set(_REFLECTION grpc++_reflection)
     set(_GRPC_GRPCPP grpc++)
     set(_PROTOBUF_LIBPROTOBUF libprotobuf)
@@ -301,8 +306,8 @@ function(GenerateGrpcSources)
   cmake_parse_arguments(GENERATE_ARGS "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
   set(output_files "${GENERATE_ARGS_OUTPUT}")
   set(proto_file "${GENERATE_ARGS_PROTO}")
-  if(USE_SUBMODULE_LIBS)
-    set(protobuf_includes_arg -I ${CMAKE_SOURCE_DIR}/third_party/grpc/third_party/protobuf/src/)
+  if(USE_CONAN)
+    set(protobuf_includes_arg -I ${protobuf_INCLUDE_DIRS})
   endif()
   get_filename_component(proto_name "${proto_file}" NAME)
   get_filename_component(proto_path "${proto_file}" PATH)
@@ -674,9 +679,9 @@ add_executable(IntegrationTestsRunner
 
 target_link_libraries(IntegrationTestsRunner
     ${server_lib_deps}
-    gmock
-    grpc
-    gtest
+    ${_GMOCK}
+    ${_GRPC}
+    ${_GTEST}
     Threads::Threads
 )
 
@@ -782,9 +787,9 @@ target_include_directories(UnitTestsRunner
 target_link_libraries(UnitTestsRunner
     ${CMAKE_DL_LIBS}
     ${server_lib_deps}
-    gmock
-    grpc
-    gtest
+    ${_GMOCK}
+    ${_GRPC}
+    ${_GTEST}
     Threads::Threads
 )
 
@@ -922,8 +927,8 @@ add_executable(SystemTestsRunner ${system_test_runner_sources})
 target_link_libraries(SystemTestsRunner
     ${CMAKE_DL_LIBS}
     ${server_lib_deps}
-    gmock
-    gtest
+    ${_GMOCK}
+    ${_GTEST}
 )
 
 # Ignore the use of deprecated functions in test code

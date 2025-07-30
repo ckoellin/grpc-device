@@ -1,0 +1,15 @@
+[requires]
+grpc/1.69.0
+gtest/1.16.0
+nlohmann_json/3.11.3
+utfcpp/4.0.5
+
+[generators]
+CMakeDeps
+CMakeToolchain
+
+[options]
+grpc/*:shared=False
+gtest/*:shared=False
+nlohmann_json/*:header_only=True
+utfcpp/*:header_only=True

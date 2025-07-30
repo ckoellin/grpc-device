@@ -1,4 +1,4 @@
-#include <grpcpp/test/server_context_test_spouse.h>
+#include "server_context_test_spouse.h"
 #include <gtest/gtest.h>
 #include <server/software_enumerator.h>
 #include <server/syscfg_library.h>

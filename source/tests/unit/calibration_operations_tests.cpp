@@ -1,4 +1,4 @@
-#include <grpcpp/test/server_context_test_spouse.h>
+#include "server_context_test_spouse.h"
 #include <gtest/gtest.h>
 #include <server/calibration_operations_restricted_service.h>
 #include <server/converters.h>

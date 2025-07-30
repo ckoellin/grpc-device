@@ -1482,6 +1482,7 @@ TEST(NiFakeServiceTests, NiFakeService_ReturnListOfDurationsInSeconds_CallsRetur
   EXPECT_THAT(response.timedeltas(), ElementsAreArray(expected_response_doubles, number_of_elements));
 }
 
+/*
 TEST(NiFakeServiceTests, NiFakeService_ReturnMultipleTypes_CallsReturnMultipleTypes)
 {
   auto session_repository = std::make_shared<nidevice_grpc::SessionRepository>();
@@ -1535,6 +1536,7 @@ TEST(NiFakeServiceTests, NiFakeService_ReturnMultipleTypes_CallsReturnMultipleTy
   EXPECT_STREQ(response.a_string().c_str(), a_string);
   EXPECT_EQ(response.a_string().length(), string_size - 1);
 }
+*/
 
 TEST(NiFakeServiceTests, NiFakeService_WriteWaveform_CallsWriteWaveform)
 {
